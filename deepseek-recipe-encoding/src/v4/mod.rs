@@ -365,6 +365,27 @@ mod tests {
     }
 
     #[test]
+    fn v41_can_preserve_reasoning_history_without_tools() {
+        let conversation = Conversation {
+            messages: vec![user("a"), assistant("b", "r"), user("c")],
+            ..Conversation::default()
+        };
+        let preserved = DeepseekV41Encoding::new()
+            .with_drop_thinking(false)
+            .render_conversation(&conversation)
+            .prompt;
+        assert!(
+            preserved.contains("<｜Assistant｜><think>r</think>b<｜end▁of▁sentence｜><｜User｜>c")
+        );
+
+        let dropped = DeepseekV41Encoding::new()
+            .with_drop_thinking(true)
+            .render_conversation(&conversation)
+            .prompt;
+        assert_eq!(dropped, render(&conversation));
+    }
+
+    #[test]
     fn consecutive_latest_reminders_keep_the_first() {
         let conversation = Conversation {
             messages: vec![

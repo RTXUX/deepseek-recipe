@@ -38,6 +38,7 @@ fn reasoning_effort_template(effort: Option<ReasoningEffort>) -> Prompt {
 #[derive(Clone)]
 pub struct DeepseekV41Encoding {
     components: EncodingComponents,
+    drop_thinking: Option<bool>,
 }
 
 impl DeepseekV41Encoding {
@@ -49,13 +50,21 @@ impl DeepseekV41Encoding {
     pub fn new() -> Self {
         Self {
             components: EncodingComponents::new(),
+            drop_thinking: None,
         }
+    }
+
+    /// Override whether historical reasoning is omitted when no tool prompt is rendered.
+    pub fn with_drop_thinking(mut self, drop_thinking: bool) -> Self {
+        self.drop_thinking = Some(drop_thinking);
+        self
     }
 
     /// Attach the tokenizer that [`PromptEncoding::encode`] uses.
     pub fn with_tokenizer(self, tokenizer: impl TokenizerEncoder + 'static) -> Self {
         Self {
             components: self.components.with_tokenizer(tokenizer),
+            ..self
         }
     }
 
@@ -63,6 +72,7 @@ impl DeepseekV41Encoding {
     pub fn with_special_tokens(self, tokens: impl SpecialTokens + 'static) -> Self {
         Self {
             components: self.components.with_special_tokens(tokens),
+            ..self
         }
     }
 
@@ -282,8 +292,7 @@ impl PromptEncoding for DeepseekV41Encoding {
                 );
             }
         }
-        // Earlier reasoning content is rendered only with the tool prompt.
-        let drop_thinking = !renders_tool_prompt;
+        let drop_thinking = self.drop_thinking.unwrap_or(!renders_tool_prompt);
 
         let mut prompt = prompt!("{}", self.components.special(SpecialToken::Bos));
         for index in 0..messages.len() {
