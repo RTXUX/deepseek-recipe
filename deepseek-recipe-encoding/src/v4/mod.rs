@@ -32,13 +32,19 @@ const ASSISTANT_SPECIAL_TOKENS: &[SpecialToken] = &[
     SpecialToken::PolygonEnd,
 ];
 
-/// Parse tool call arguments into the object whose entries become DSML
+/// Parse tool call arguments into raw JSON values whose entries become DSML
 /// parameters. Arguments that are not a JSON object become one `arguments`
 /// string parameter holding the original text.
-fn parse_tool_call_arguments(tool_call: &ToolCall) -> serde_json::Map<String, serde_json::Value> {
+fn parse_tool_call_arguments(
+    tool_call: &ToolCall,
+) -> indexmap::IndexMap<String, Box<serde_json::value::RawValue>> {
     serde_json::from_str(&tool_call.arguments).unwrap_or_else(|err| {
         tracing::warn!(?err, "invalid tool call arguments");
-        serde_json::Map::from_iter([("arguments".to_owned(), tool_call.arguments.clone().into())])
+        indexmap::IndexMap::from_iter([(
+            "arguments".to_owned(),
+            serde_json::value::to_raw_value(&tool_call.arguments)
+                .expect("serializing a string cannot fail"),
+        )])
     })
 }
 
@@ -383,6 +389,37 @@ mod tests {
             .render_conversation(&conversation)
             .prompt;
         assert_eq!(dropped, render(&conversation));
+    }
+
+    #[test]
+    fn v41_can_preserve_tool_argument_spelling() {
+        let call = ToolCall {
+            id: "c1".to_string(),
+            name: "f".to_string(),
+            arguments: r#"{"compact":[1,2,3],"nested":{"n":1e+00},"text":"a\nb"}"#.to_string(),
+        };
+        let conversation = Conversation {
+            messages: vec![
+                user("a"),
+                InputMessage::Assistant {
+                    content: String::new(),
+                    reasoning_content: None,
+                    tool_calls: Some(vec![call]),
+                    prefix: false,
+                },
+            ],
+            ..Conversation::default()
+        };
+        let preserved = DeepseekV41Encoding::new()
+            .with_preserved_tool_argument_spelling(true)
+            .render_conversation(&conversation)
+            .prompt;
+        assert!(preserved.contains("string=\"false\">[1,2,3]</｜DSML｜ parameter>"));
+        assert!(preserved.contains("string=\"false\">{\"n\":1e+00}</｜DSML｜ parameter>"));
+        assert!(preserved.contains("string=\"true\">a\nb</｜DSML｜ parameter>"));
+
+        let canonical = render(&conversation);
+        assert!(canonical.contains("string=\"false\">[1, 2, 3]</｜DSML｜ parameter>"));
     }
 
     #[test]

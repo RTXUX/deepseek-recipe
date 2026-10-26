@@ -91,9 +91,11 @@ impl DeepseekV4Encoding {
             let name = &tool_call.name;
             *prompt += prompt!("<{dsml}invoke name=\"{name}\">\n");
             for (key, value) in &parse_tool_call_arguments(tool_call) {
+                let value = serde_json::from_str::<serde_json::Value>(value.get())
+                    .expect("raw arguments contain valid JSON");
                 let (is_str, value) = match value.as_str() {
                     Some(value) => ("true", value.to_owned()),
-                    None => ("false", stringify_spaced(value)),
+                    None => ("false", stringify_spaced(&value)),
                 };
                 *prompt += prompt!(
                     "<{dsml}parameter name=\"{key}\" string=\"{is_str}\">{value}</{dsml}parameter>\n"

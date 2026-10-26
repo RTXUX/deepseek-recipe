@@ -39,6 +39,7 @@ fn reasoning_effort_template(effort: Option<ReasoningEffort>) -> Prompt {
 pub struct DeepseekV41Encoding {
     components: EncodingComponents,
     drop_thinking: Option<bool>,
+    preserve_tool_argument_spelling: bool,
 }
 
 impl DeepseekV41Encoding {
@@ -51,7 +52,14 @@ impl DeepseekV41Encoding {
         Self {
             components: EncodingComponents::new(),
             drop_thinking: None,
+            preserve_tool_argument_spelling: false,
         }
+    }
+
+    /// Preserve the original JSON spelling of non-string historical tool arguments.
+    pub fn with_preserved_tool_argument_spelling(mut self, preserve: bool) -> Self {
+        self.preserve_tool_argument_spelling = preserve;
+        self
     }
 
     /// Override whether historical reasoning is omitted when no tool prompt is rendered.
@@ -109,9 +117,18 @@ impl DeepseekV41Encoding {
             for (argument_index, (key, value)) in
                 parse_tool_call_arguments(tool_call).iter().enumerate()
             {
-                let (is_str, value) = match value.as_str() {
-                    Some(value) => ("true", value.to_owned()),
-                    None => ("false", stringify_python_style(value)),
+                let (is_str, value) = if self.preserve_tool_argument_spelling {
+                    match serde_json::from_str::<String>(value.get()) {
+                        Ok(value) => ("true", value),
+                        Err(_) => ("false", value.get().to_owned()),
+                    }
+                } else {
+                    let value = serde_json::from_str::<serde_json::Value>(value.get())
+                        .expect("raw arguments contain valid JSON");
+                    match value.as_str() {
+                        Some(value) => ("true", value.to_owned()),
+                        None => ("false", stringify_python_style(&value)),
+                    }
                 };
                 if argument_index > 0 {
                     arguments.push_plain("\n");

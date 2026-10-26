@@ -462,6 +462,7 @@ version = "0.2.0"
 dependencies = [
  "aho-corasick",
  "deepseek-recipe-core",
+ "indexmap",
  "serde",
  "serde_json",
  "thiserror",
